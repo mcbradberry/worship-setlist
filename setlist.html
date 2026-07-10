@@ -117,6 +117,10 @@
   .edge.next:hover { background: linear-gradient(to left, rgba(0,0,0,.25), transparent); }
   .edge.prev { left: 0; } .edge.next { right: 0; }
   .edge:disabled { visibility: hidden; }
+  /* touch screens have no hover: keep the prev/next arrows visible */
+  @media (hover: none), (pointer: coarse) {
+    .edge { color: var(--chord-dim); font-size: 38px; }
+  }
 
   /* ---------- footer ---------- */
   footer {
@@ -277,6 +281,7 @@
       Copy or send the one file to any device and it opens ready to go.
       The first Ctrl+S each session asks where to save — pick this same file to update it in place.
       On browsers without direct file saving, Save downloads a fresh copy instead; replace the old file with it.
+      On phones and tablets: swipe left/right or tap the edge arrows to change songs.
       Tip: press F11 for full screen during worship.
     </div>
     <div class="modalBtns"><button id="closeHelp">Close</button></div>
@@ -631,6 +636,21 @@ $('saveBtn').onclick = saveFile;
 window.addEventListener('beforeunload', e => {
   if (dirty) { e.preventDefault(); e.returnValue = ''; }
 });
+
+// swipe left/right on the song area to change songs (phones/tablets)
+const stageEl = document.querySelector('main');
+let swipeX = 0, swipeY = 0, swipeT = 0;
+stageEl.addEventListener('touchstart', e => {
+  const t = e.changedTouches[0];
+  swipeX = t.clientX; swipeY = t.clientY; swipeT = Date.now();
+}, { passive: true });
+stageEl.addEventListener('touchend', e => {
+  const t = e.changedTouches[0];
+  const dx = t.clientX - swipeX, dy = t.clientY - swipeY;
+  if (Date.now() - swipeT < 600 && Math.abs(dx) > 60 && Math.abs(dx) > 2 * Math.abs(dy)) {
+    go(dx < 0 ? cur + 1 : cur - 1);
+  }
+}, { passive: true });
 
 window.addEventListener('resize', () => {
   const st = settingsFor(db.songs[cur].id);
