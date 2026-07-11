@@ -1,8 +1,13 @@
 <!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#131110">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Set List">
 <title>Worship Set List</title>
 <style>
   :root {
@@ -21,6 +26,7 @@
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; }
+  body { height: 100dvh; } /* size to the truly visible area on mobile (browser bars shrink it) */
   body {
     background: radial-gradient(120% 90% at 50% 0%, var(--bg-lift) 0%, var(--bg) 62%);
     color: var(--ink);
@@ -49,6 +55,8 @@
     justify-content: space-between;
     gap: 16px;
     padding: 10px 18px;
+    padding-left: max(18px, env(safe-area-inset-left));
+    padding-right: max(18px, env(safe-area-inset-right));
     border-bottom: 1px solid var(--line);
   }
   #songTitle { font: 400 19px/1.2 var(--serif); }
@@ -76,6 +84,9 @@
     overflow: hidden;
     font-family: var(--serif);
   }
+  /* fallback when a song can't fit the screen at readable size */
+  main.scroll { overflow-y: auto; }
+  main.scroll #sheet { height: auto; overflow: visible; }
   #sheet.switching { opacity: 0; transform: translateY(6px); }
   #sheet { transition: opacity .18s ease, transform .18s ease; }
   @media (prefers-reduced-motion: reduce) { #sheet { transition: none; } }
@@ -121,11 +132,19 @@
   @media (hover: none), (pointer: coarse) {
     .edge { color: var(--chord-dim); font-size: 38px; }
   }
+  /* narrow screens: stack the title above the controls so buttons don't clip */
+  @media (max-width: 700px) {
+    header { flex-direction: column; align-items: flex-start; gap: 8px; }
+    .controls { justify-content: flex-start; }
+  }
 
   /* ---------- footer ---------- */
   footer {
     display: flex; align-items: center; justify-content: space-between;
     padding: 7px 18px;
+    padding-left: max(18px, env(safe-area-inset-left));
+    padding-right: max(18px, env(safe-area-inset-right));
+    padding-bottom: max(7px, env(safe-area-inset-bottom));
     border-top: 1px solid var(--line);
     font: 400 11px var(--sans); color: var(--muted);
   }
@@ -212,6 +231,7 @@
       <button id="colBtn" title="Cycle columns ( C )">2</button>
     </div>
     <div class="grp">
+      <button id="fullBtn" title="Full screen">⛶</button>
       <button id="saveBtn" title="Save set list into this file (Ctrl+S)">Save</button>
       <button id="editBtn" title="Edit this song ( E )">Edit</button>
       <button id="listBtn" title="Set list ( L )">Set list</button>
@@ -282,6 +302,9 @@
       The first Ctrl+S each session asks where to save — pick this same file to update it in place.
       On browsers without direct file saving, Save downloads a fresh copy instead; replace the old file with it.
       On phones and tablets: swipe left/right or tap the edge arrows to change songs.
+      For a full-screen view, tap ⛶ (Android and desktop). On iPhone, Safari doesn't allow
+      true full screen — instead use Share → Add to Home Screen, then launch from that icon
+      to get the whole screen with no browser bars.
       Tip: press F11 for full screen during worship.
     </div>
     <div class="modalBtns"><button id="closeHelp">Close</button></div>
@@ -502,7 +525,6 @@ function renderSong() {
   const tr = sym => off === 0 ? sym : transposeChord(sym, off, { flat });
 
   sheet.innerHTML = '';
-  sheet.style.columnCount = st.cols;
 
   for (const s of song.sections) {
     const box = el('div', 'sec' + (/chorus/i.test(s.label) ? ' chorus' : ''));
@@ -546,11 +568,7 @@ function renderSong() {
     badge.appendChild(el('span', '', transposedKeyName(song.key, off)));
   }
 
-  $('colBtn').textContent = st.cols;
-
-  // font size: saved, or auto-fit
-  if (st.fs) sheet.style.fontSize = st.fs + 'px';
-  else fitToScreen(false);
+  applyLayout(st);
 
   // footer
   $('counter').textContent = (cur + 1) + ' / ' + db.songs.length;
@@ -568,6 +586,26 @@ function renderSong() {
   $('nextBtn').disabled = cur === db.songs.length - 1;
 }
 
+// Columns and font size, adapted to the screen actually in use: narrow
+// screens clamp the column count, and a saved font size that overflows
+// this screen shrinks (without overwriting the saved preference).
+function applyLayout(st) {
+  const stage = sheet.parentElement;
+  stage.classList.remove('scroll');
+  const maxCols = sheet.clientWidth < 640 ? 1 : sheet.clientWidth < 1100 ? 2 : 3;
+  const cols = Math.min(st.cols, maxCols);
+  sheet.style.columnCount = cols;
+  $('colBtn').textContent = cols;
+  if (st.fs) sheet.style.fontSize = st.fs + 'px';
+  else fitToScreen();
+  if (overflows()) {
+    // this screen can't show the whole song at a readable size:
+    // keep the text readable and let the song area scroll vertically
+    stage.classList.add('scroll');
+    if (!st.fs) fitToScreen(true);
+  }
+}
+
 function overflows() {
   if (sheet.scrollWidth > sheet.clientWidth + 1 || sheet.scrollHeight > sheet.clientHeight + 1) return true;
   // horizontal overflow inside a CSS column doesn't grow the sheet's
@@ -578,17 +616,32 @@ function overflows() {
   return false;
 }
 
-function fitToScreen(persist) {
+// width-only overflow test, used in scroll mode (height may grow)
+function overflowsX() {
+  if (sheet.scrollWidth > sheet.clientWidth + 1) return true;
+  for (const l of sheet.querySelectorAll('.line, .iline')) {
+    if (l.scrollWidth > l.clientWidth + 1) return true;
+  }
+  return false;
+}
+
+function fitToScreen(widthOnly) {
   let lo = 11, hi = 46, best = lo;
   while (lo <= hi) {
     const mid = (lo + hi) >> 1;
     sheet.style.fontSize = mid + 'px';
-    if (overflows()) hi = mid - 1;
+    if (widthOnly ? overflowsX() : overflows()) hi = mid - 1;
     else { best = mid; lo = mid + 1; }
   }
   sheet.style.fontSize = best + 'px';
+}
+
+// "Fit" clears any manual size -> back to automatic fitting
+function resetFit() {
   const st = settingsFor(db.songs[cur].id);
-  if (persist) { st.fs = null; markDirty(); }   // "Fit" clears any manual size -> stays auto
+  st.fs = null;
+  markDirty();
+  applyLayout(st);
 }
 
 function go(i, skipAnim) {
@@ -604,8 +657,8 @@ function go(i, skipAnim) {
 function bumpFont(d) {
   const st = settingsFor(db.songs[cur].id);
   st.fs = Math.min(60, Math.max(9, (st.fs || parseFloat(sheet.style.fontSize) || 20) + d));
-  sheet.style.fontSize = st.fs + 'px';
   markDirty();
+  applyLayout(st);
 }
 function bumpTr(d) {
   const st = settingsFor(db.songs[cur].id);
@@ -627,11 +680,26 @@ $('trUp').onclick = () => bumpTr(1);
 $('keyBadge').onclick = resetTr;
 $('fsDown').onclick = () => bumpFont(-1);
 $('fsUp').onclick = () => bumpFont(1);
-$('fitBtn').onclick = () => fitToScreen(true);
+$('fitBtn').onclick = resetFit;
 $('colBtn').onclick = cycleCols;
 $('prevBtn').onclick = () => go(cur - 1);
 $('nextBtn').onclick = () => go(cur + 1);
 $('saveBtn').onclick = saveFile;
+
+// full screen where the API exists (desktop, Android). iPhone Safari has
+// no fullscreen API for pages - there, Add to Home Screen is the answer.
+const rootEl = document.documentElement;
+if (rootEl.requestFullscreen || rootEl.webkitRequestFullscreen) {
+  $('fullBtn').onclick = () => {
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+      (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    } else {
+      (rootEl.requestFullscreen || rootEl.webkitRequestFullscreen).call(rootEl);
+    }
+  };
+} else {
+  $('fullBtn').style.display = 'none';
+}
 
 window.addEventListener('beforeunload', e => {
   if (dirty) { e.preventDefault(); e.returnValue = ''; }
@@ -653,8 +721,7 @@ stageEl.addEventListener('touchend', e => {
 }, { passive: true });
 
 window.addEventListener('resize', () => {
-  const st = settingsFor(db.songs[cur].id);
-  if (!st.fs) fitToScreen(false);
+  applyLayout(settingsFor(db.songs[cur].id));
 });
 
 /* ================= drawer ================= */
@@ -768,7 +835,7 @@ document.addEventListener('keydown', e => {
     case ']': bumpTr(1); break;
     case '-': case '_': bumpFont(-1); break;
     case '+': case '=': bumpFont(1); break;
-    case 'f': case 'F': fitToScreen(true); break;
+    case 'f': case 'F': resetFit(); break;
     case 'c': case 'C': cycleCols(); break;
     case 'e': case 'E': openEditor(db.songs[cur].id); break;
     case 'l': case 'L': drawer.classList.contains('open') ? closeDrawer() : openDrawer(); break;
@@ -791,4 +858,12 @@ const startAt = parseInt((location.hash || '').replace(/\D/g, ''), 10);
 if (startAt >= 1 && startAt <= db.songs.length) cur = startAt - 1;
 
 renderSong();
+
+if (location.hash === '#fitdebug') {
+  const wide = [...sheet.querySelectorAll('.line, .iline')].filter(l => l.scrollWidth > l.clientWidth + 1).length;
+  document.title = 'DBG fs=' + sheet.style.fontSize + ' cols=' + sheet.style.columnCount +
+    ' scroll=' + sheet.parentElement.classList.contains('scroll') +
+    ' sw=' + sheet.scrollWidth + ' cw=' + sheet.clientWidth +
+    ' sh=' + sheet.scrollHeight + ' ch=' + sheet.clientHeight + ' wideLines=' + wide;
+}
 </script></body></html>
