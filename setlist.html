@@ -55,6 +55,7 @@
     justify-content: space-between;
     gap: 16px;
     padding: 10px 18px;
+    padding-top: max(10px, env(safe-area-inset-top));
     padding-left: max(18px, env(safe-area-inset-left));
     padding-right: max(18px, env(safe-area-inset-right));
     border-bottom: 1px solid var(--line);
@@ -78,6 +79,8 @@
   #sheet {
     height: 100%;
     padding: 20px 64px 16px; /* wide side padding keeps text clear of TV overscan */
+    padding-left: max(64px, env(safe-area-inset-left));   /* stay clear of phone notches */
+    padding-right: max(64px, env(safe-area-inset-right));
     column-gap: 44px;
     column-fill: balance;
     column-rule: 1px solid var(--line);
@@ -98,7 +101,17 @@
 
   /* smaller screens: reclaim the TV overscan margins for content */
   @media (max-width: 1100px) {
-    #sheet { padding: 12px 20px 10px; column-gap: 24px; }
+    #sheet {
+      padding: 12px 20px 10px;
+      padding-left: max(20px, env(safe-area-inset-left));
+      padding-right: max(20px, env(safe-area-inset-right));
+      column-gap: 24px;
+    }
+  }
+  /* with the title bar hidden, the song area owns the top safe zone too */
+  body.present #sheet { padding-top: max(20px, env(safe-area-inset-top)); }
+  @media (max-width: 1100px) {
+    body.present #sheet { padding-top: max(12px, env(safe-area-inset-top)); }
   }
   /* fallback when a song can't fit the screen at readable size */
   main.scroll { overflow-y: auto; }
@@ -645,7 +658,7 @@ function overflowsX() {
 }
 
 function fitToScreen(widthOnly) {
-  let lo = 10, hi = 46, best = lo;
+  let lo = 6, hi = 46, best = lo;
   while (lo <= hi) {
     const mid = (lo + hi) >> 1;
     sheet.style.fontSize = mid + 'px';
@@ -906,7 +919,7 @@ if (/present/i.test(location.hash)) setStage(true);
 
 renderSong();
 
-if (location.hash === '#fitdebug') {
+if (/fitdebug/i.test(location.hash)) {
   const wide = [...sheet.querySelectorAll('.line, .iline')].filter(l => l.scrollWidth > l.clientWidth + 1).length;
   document.title = 'DBG fs=' + sheet.style.fontSize + ' cols=' + sheet.style.columnCount +
     ' scroll=' + sheet.parentElement.classList.contains('scroll') +
