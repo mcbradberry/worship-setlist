@@ -84,6 +84,18 @@
     overflow: hidden;
     font-family: var(--serif);
   }
+  /* presenting: hide the title bar, keep a small handle to bring it back */
+  body.present header { display: none; }
+  #chromeBtn {
+    position: fixed; z-index: 15;
+    top: max(8px, env(safe-area-inset-top));
+    right: max(8px, env(safe-area-inset-right));
+    display: none; width: 36px; padding: 3px 0;
+    font-size: 16px; line-height: 1.2; color: var(--muted);
+    background: rgba(19, 17, 16, .6);
+  }
+  body.present #chromeBtn, body.stage #chromeBtn { display: block; }
+
   /* smaller screens: reclaim the TV overscan margins for content */
   @media (max-width: 1100px) {
     #sheet { padding: 12px 20px 10px; column-gap: 24px; }
@@ -244,6 +256,8 @@
   </div>
 </header>
 
+<button id="chromeBtn" title="Show / hide controls ( H )">⋯</button>
+
 <main>
   <section id="sheet"></section>
   <button class="edge prev" id="prevBtn" title="Previous song">‹</button>
@@ -295,6 +309,7 @@
       <tr><td>[ &nbsp;/&nbsp; ]</td><td>Transpose down / up</td></tr>
       <tr><td>− &nbsp;/&nbsp; +</td><td>Font smaller / bigger</td></tr>
       <tr><td>F</td><td>Fit song to screen</td></tr>
+      <tr><td>H</td><td>Hide / show the title bar</td></tr>
       <tr><td>C</td><td>Cycle columns (1 / 2 / 3)</td></tr>
       <tr><td>E</td><td>Edit current song</td></tr>
       <tr><td>L</td><td>Open set list</td></tr>
@@ -690,6 +705,31 @@ $('prevBtn').onclick = () => go(cur - 1);
 $('nextBtn').onclick = () => go(cur + 1);
 $('saveBtn').onclick = saveFile;
 
+// Presentation mode: hide the title bar while playing. Entered automatically
+// in fullscreen or when launched as a home-screen app; the floating "..."
+// handle (or the H key) brings the controls back.
+function togglePresent(force) {
+  document.body.classList.toggle('present', force);
+  applyLayout(settingsFor(db.songs[cur].id));
+}
+function setStage(on) {
+  document.body.classList.toggle('stage', on);
+  togglePresent(on);
+}
+$('chromeBtn').onclick = () => togglePresent();
+
+const dmFull = matchMedia('(display-mode: fullscreen)');
+const dmStand = matchMedia('(display-mode: standalone)');
+function stageCheck() {
+  setStage(!!(document.fullscreenElement || document.webkitFullscreenElement)
+    || dmFull.matches || dmStand.matches || navigator.standalone === true);
+}
+document.addEventListener('fullscreenchange', stageCheck);
+document.addEventListener('webkitfullscreenchange', stageCheck);
+dmFull.onchange = stageCheck;
+dmStand.onchange = stageCheck;
+if (dmFull.matches || dmStand.matches || navigator.standalone === true) setStage(true);
+
 // full screen where the API exists (desktop, Android). iPhone Safari has
 // no fullscreen API for pages - there, Add to Home Screen is the answer.
 const rootEl = document.documentElement;
@@ -842,6 +882,7 @@ document.addEventListener('keydown', e => {
     case 'f': case 'F': resetFit(); break;
     case 'c': case 'C': cycleCols(); break;
     case 'e': case 'E': openEditor(db.songs[cur].id); break;
+    case 'h': case 'H': togglePresent(); break;
     case 'l': case 'L': drawer.classList.contains('open') ? closeDrawer() : openDrawer(); break;
     case '?': $('helpModal').classList.add('open'); break;
   }
@@ -857,9 +898,11 @@ if (location.hash === '#selftest') {
   } catch (err) { document.title = 'SELFTEST-FAIL ' + err; }
 }
 
-// #2 in the URL opens the second song, etc.
+// #2 in the URL opens the second song, etc.; "present" in the hash
+// starts with the title bar hidden (e.g. #present or #2present)
 const startAt = parseInt((location.hash || '').replace(/\D/g, ''), 10);
 if (startAt >= 1 && startAt <= db.songs.length) cur = startAt - 1;
+if (/present/i.test(location.hash)) setStage(true);
 
 renderSong();
 
