@@ -84,6 +84,10 @@
     overflow: hidden;
     font-family: var(--serif);
   }
+  /* smaller screens: reclaim the TV overscan margins for content */
+  @media (max-width: 1100px) {
+    #sheet { padding: 12px 20px 10px; column-gap: 24px; }
+  }
   /* fallback when a song can't fit the screen at readable size */
   main.scroll { overflow-y: auto; }
   main.scroll #sheet { height: auto; overflow: visible; }
@@ -592,7 +596,7 @@ function renderSong() {
 function applyLayout(st) {
   const stage = sheet.parentElement;
   stage.classList.remove('scroll');
-  const maxCols = sheet.clientWidth < 640 ? 1 : sheet.clientWidth < 1100 ? 2 : 3;
+  const maxCols = sheet.clientWidth < 640 ? 1 : sheet.clientWidth < 820 ? 2 : 3;
   const cols = Math.min(st.cols, maxCols);
   sheet.style.columnCount = cols;
   $('colBtn').textContent = cols;
@@ -626,7 +630,7 @@ function overflowsX() {
 }
 
 function fitToScreen(widthOnly) {
-  let lo = 11, hi = 46, best = lo;
+  let lo = 10, hi = 46, best = lo;
   while (lo <= hi) {
     const mid = (lo + hi) >> 1;
     sheet.style.fontSize = mid + 'px';
@@ -656,7 +660,7 @@ function go(i, skipAnim) {
 
 function bumpFont(d) {
   const st = settingsFor(db.songs[cur].id);
-  st.fs = Math.min(60, Math.max(9, (st.fs || parseFloat(sheet.style.fontSize) || 20) + d));
+  st.fs = Math.min(60, Math.max(7, (st.fs || parseFloat(sheet.style.fontSize) || 20) + d));
   markDirty();
   applyLayout(st);
 }
