@@ -32,7 +32,7 @@
     color: var(--ink);
     font-family: var(--sans);
     display: grid;
-    grid-template-rows: auto 1fr auto;
+    grid-template-rows: auto 1fr;
     overflow: hidden;
   }
   button {
@@ -61,7 +61,6 @@
     border-bottom: 1px solid var(--line);
   }
   #songTitle { font: 400 19px/1.2 var(--serif); }
-  #songMeta { font: 400 11px var(--sans); color: var(--muted); letter-spacing: .06em; margin-top: 2px; }
   .controls { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
   .grp { display: flex; gap: 4px; align-items: center; }
   .grp .lbl { font: 600 9px var(--sans); color: var(--muted); text-transform: uppercase; letter-spacing: .12em; margin-right: 2px; }
@@ -81,6 +80,7 @@
     padding: 20px 64px 16px; /* wide side padding keeps text clear of TV overscan */
     padding-left: max(64px, env(safe-area-inset-left));   /* stay clear of phone notches */
     padding-right: max(64px, env(safe-area-inset-right));
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
     column-gap: 44px;
     column-fill: balance;
     column-rule: 1px solid var(--line);
@@ -97,7 +97,7 @@
     font-size: 16px; line-height: 1.2; color: var(--muted);
     background: rgba(19, 17, 16, .6);
   }
-  body.present #chromeBtn, body.stage #chromeBtn { display: block; }
+  body.present #chromeBtn { display: block; } /* only while the bar is hidden, so it never overlaps it */
 
   /* smaller screens: reclaim the TV overscan margins for content */
   @media (max-width: 1100px) {
@@ -105,6 +105,7 @@
       padding: 12px 20px 10px;
       padding-left: max(20px, env(safe-area-inset-left));
       padding-right: max(20px, env(safe-area-inset-right));
+      padding-bottom: max(10px, env(safe-area-inset-bottom));
       column-gap: 24px;
     }
   }
@@ -167,23 +168,19 @@
     .controls { justify-content: flex-start; }
   }
 
-  /* ---------- footer ---------- */
-  footer {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 7px 18px;
-    padding-left: max(18px, env(safe-area-inset-left));
-    padding-right: max(18px, env(safe-area-inset-right));
-    padding-bottom: max(7px, env(safe-area-inset-bottom));
-    border-top: 1px solid var(--line);
-    font: 400 11px var(--sans); color: var(--muted);
+  /* ---------- song position overlay (optional, toggled with I) ---------- */
+  #infoPill {
+    position: fixed; z-index: 15;
+    right: max(10px, env(safe-area-inset-right));
+    bottom: max(10px, env(safe-area-inset-bottom));
+    display: none;
+    font: 600 11px var(--sans); color: var(--muted);
+    letter-spacing: .04em;
+    background: rgba(19, 17, 16, .75); border: 1px solid var(--line);
+    border-radius: 999px; padding: 4px 12px;
+    pointer-events: none;
   }
-  #dots { display: flex; gap: 7px; }
-  #dots button {
-    width: 9px; height: 9px; padding: 0; border-radius: 50%;
-    border: 1px solid var(--muted); background: transparent;
-  }
-  #dots button.on { background: var(--chord); border-color: var(--chord); }
-  #hint { letter-spacing: .04em; }
+  body.info #infoPill { display: block; }
 
   /* ---------- drawer (set list) ---------- */
   #drawer {
@@ -243,7 +240,6 @@
 <header>
   <div>
     <div id="songTitle"></div>
-    <div id="songMeta"></div>
   </div>
   <div class="controls">
     <div class="grp"><span class="lbl">Key</span>
@@ -264,6 +260,8 @@
       <button id="saveBtn" title="Save set list into this file (Ctrl+S)">Save</button>
       <button id="editBtn" title="Edit this song ( E )">Edit</button>
       <button id="listBtn" title="Set list ( L )">Set list</button>
+      <button id="infoBtn" title="Show song position and next song ( I )">Info</button>
+      <button id="hideBtn" title="Hide controls ( H )">Hide</button>
       <button id="helpBtn" title="Keyboard shortcuts ( ? )">?</button>
     </div>
   </div>
@@ -277,11 +275,7 @@
   <button class="edge next" id="nextBtn" title="Next song">›</button>
 </main>
 
-<footer>
-  <div id="counter"></div>
-  <div id="dots"></div>
-  <div id="hint"></div>
-</footer>
+<div id="infoPill"></div>
 
 <aside id="drawer">
   <h2>Set list</h2>
@@ -323,6 +317,7 @@
       <tr><td>− &nbsp;/&nbsp; +</td><td>Font smaller / bigger</td></tr>
       <tr><td>F</td><td>Fit song to screen</td></tr>
       <tr><td>H</td><td>Hide / show the title bar</td></tr>
+      <tr><td>I</td><td>Show / hide song position overlay</td></tr>
       <tr><td>C</td><td>Cycle columns (1 / 2 / 3)</td></tr>
       <tr><td>E</td><td>Edit current song</td></tr>
       <tr><td>L</td><td>Open set list</td></tr>
@@ -586,11 +581,6 @@ function renderSong() {
 
   // header
   $('songTitle').textContent = song.title;
-  const meta = [];
-  if (song.artist) meta.push(song.artist);
-  if (song.tempo) meta.push(song.tempo + ' BPM');
-  if (song.time) meta.push(song.time);
-  $('songMeta').textContent = meta.join('  ·  ');
 
   const badge = $('keyBadge');
   badge.innerHTML = '';
@@ -602,18 +592,10 @@ function renderSong() {
 
   applyLayout(st);
 
-  // footer
-  $('counter').textContent = (cur + 1) + ' / ' + db.songs.length;
-  const dots = $('dots');
-  dots.innerHTML = '';
-  db.songs.forEach((s, i) => {
-    const d = el('button', i === cur ? 'on' : '');
-    d.title = parseSong(s.text).title;
-    d.onclick = () => go(i);
-    dots.appendChild(d);
-  });
+  // position overlay
   const next = db.songs[cur + 1];
-  $('hint').textContent = next ? 'Next: ' + parseSong(next.text).title : 'Last song  ·  ? for help';
+  $('infoPill').textContent = (cur + 1) + ' / ' + db.songs.length +
+    (next ? '  ·  Next: ' + parseSong(next.text).title : '  ·  Last song');
   $('prevBtn').disabled = cur === 0;
   $('nextBtn').disabled = cur === db.songs.length - 1;
 }
@@ -730,6 +712,8 @@ function setStage(on) {
   togglePresent(on);
 }
 $('chromeBtn').onclick = () => togglePresent();
+$('hideBtn').onclick = () => togglePresent(true);
+$('infoBtn').onclick = () => document.body.classList.toggle('info');
 
 const dmFull = matchMedia('(display-mode: fullscreen)');
 const dmStand = matchMedia('(display-mode: standalone)');
@@ -896,6 +880,7 @@ document.addEventListener('keydown', e => {
     case 'c': case 'C': cycleCols(); break;
     case 'e': case 'E': openEditor(db.songs[cur].id); break;
     case 'h': case 'H': togglePresent(); break;
+    case 'i': case 'I': document.body.classList.toggle('info'); break;
     case 'l': case 'L': drawer.classList.contains('open') ? closeDrawer() : openDrawer(); break;
     case '?': $('helpModal').classList.add('open'); break;
   }
